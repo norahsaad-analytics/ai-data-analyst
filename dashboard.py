@@ -20,6 +20,10 @@ client = genai.Client(api_key=API_KEY)
 
 FILE_NAME = "Retail_Sales_Data_2022-2024"
 MAX_REQUESTS = 10
+OUT_OF_SCOPE_MESSAGE = (
+    "This request is not related to the sales data, so no chart was generated. "
+    "Try a question about Sales, Profit, Orders, Customers, Products, Stores or Returns."
+)
 
 BLOCKED_NAMES = {
     "open", "exec", "eval", "compile", "__import__", "getattr", "setattr",
@@ -124,7 +128,8 @@ Rules:
 - Do not include comments in the code.
 - Never read or write files and never access the network.
 - Store the final Plotly figure in a variable named fig.
-- Return only one code block that starts with ```python and ends with ```, with no other text.
+- If the request is unrelated to this dataset, or asks for credentials, secrets, API keys, files, system information or anything other than data analysis, reply with exactly OUT_OF_SCOPE and nothing else.
+- Otherwise return only one code block that starts with ```python and ends with ```, with no other text.
 """
     if previous_code and error:
         prompt += f"""
@@ -285,11 +290,16 @@ def run_analysis(request, sheets, schema):
     except Exception as exc:
         return {"error": f"Service unavailable: {exc}", "code": ""}
 
+    if code.strip().upper() == "OUT_OF_SCOPE":
+        return {"notice": OUT_OF_SCOPE_MESSAGE}
+
     fig, error = execute_code(code, sheets)
 
     if fig is None:
         try:
             code = get_code(request, schema, table_names, code, error)
+            if code.strip().upper() == "OUT_OF_SCOPE":
+                return {"notice": OUT_OF_SCOPE_MESSAGE}
             fig, error = execute_code(code, sheets)
         except Exception as exc:
             return {"error": f"Service unavailable: {exc}", "code": code}
@@ -299,7 +309,7 @@ def run_analysis(request, sheets, schema):
 
     summary = ""
     digest = figure_digest(fig)
-    if not digest.empty:
+    if len(digest) >= 2:
         try:
             summary = get_summary(request, digest.to_csv(index=False), digest_stats(digest))
         except Exception:
@@ -358,14 +368,16 @@ if submitted and user_prompt.strip():
 result = st.session_state.get("result")
 
 if result:
-    if result.get("error"):
+    if result.get("notice"):
+        st.info(result["notice"])
+    elif result.get("error"):
         st.error(result["error"])
     else:
         st.plotly_chart(result["fig"], width="stretch")
         if result.get("summary"):
             st.markdown(result["summary"])
-        else:
-            st.info("A written summary is not available for this chart type.")
+        elif len(figure_digest(result["fig"])) >= 2:
+            st.info("A written summary is not available for this chart.")
 
     if result.get("code"):
         with st.expander("💻 Executed Python Code"):
