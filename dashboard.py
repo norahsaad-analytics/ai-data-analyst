@@ -120,6 +120,7 @@ Rules:
 - Format numbers readably: use tickformat=".2s" on value axes and thousands separators in hover text.
 - For rates and percentages use tickformat=".1%" on the value axis and show one decimal in the labels.
 - For monthly data show every month on the x axis (for example dtick="M1" or a category axis).
+- State how any rate or ratio is defined in the axis title or subtitle, for example 'Return Rate (% of order lines)'.
 - Do not include comments in the code.
 - Never read or write files and never access the network.
 - Store the final Plotly figure in a variable named fig.
@@ -266,6 +267,8 @@ Rules:
 - Each bullet must be under 30 words and must not repeat the numbers used in another bullet.
 - Use only numbers from the data or the verified statistics. Never invent, estimate or recompute figures.
 - The change from first to last point is meaningful only when the x axis is time. Ignore it for categories such as regions or products.
+- The total and the share of total are meaningful only for additive values such as sales, profit or quantity. For rates, percentages and averages never add values together or quote a share of total; compare the gap between items instead, in percentage points.
+- If the gap between the highest and lowest item is small, say that the difference is small.
 - Format large numbers with K or M (for example 1.31M or 159.9K), add a $ sign only for sales, profit or cost, and show percentages with one decimal.
 - Values between 0 and 1 in a chart about rates or shares are fractions: 0.036 means 3.6%.
 - Describe trends accurately. Do not say a trend is steady or upward unless the data shows it. Name sharp rises, drops and outliers when they exist.
