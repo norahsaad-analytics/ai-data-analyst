@@ -118,6 +118,7 @@ Rules:
 - Use clear English titles, axis labels and legends.
 - The title must be accurate: if fewer categories exist than the user asked for, do not write 'Top N'.
 - Format numbers readably: use tickformat=".2s" on value axes and thousands separators in hover text.
+- For rates and percentages use tickformat=".1%" on the value axis and show one decimal in the labels.
 - For monthly data show every month on the x axis (for example dtick="M1" or a category axis).
 - Do not include comments in the code.
 - Never read or write files and never access the network.
@@ -188,7 +189,7 @@ def execute_code(code, sheets):
 
 def clean_value(value):
     if isinstance(value, (float, np.floating)):
-        return round(float(value), 2)
+        return float(f"{float(value):.6g}")
     if isinstance(value, np.integer):
         return int(value)
     return value
@@ -213,6 +214,12 @@ def figure_digest(fig, max_rows_per_trace=40, max_total=200):
     return pd.DataFrame(rows)
 
 
+def fmt_number(value):
+    if abs(value) >= 100:
+        return f"{value:,.2f}"
+    return f"{value:.4g}"
+
+
 def digest_stats(digest):
     lines = []
     for series, part in digest.groupby("series", dropna=False):
@@ -224,8 +231,8 @@ def digest_stats(digest):
         low = valid.loc[valid["y"].idxmin()]
         label = series or "all"
         line = (
-            f"[{label}] points={len(valid)}, total={total:,.2f}, "
-            f"highest={top['x']} ({top['y']:,.2f}), lowest={low['x']} ({low['y']:,.2f})"
+            f"[{label}] points={len(valid)}, total={fmt_number(total)}, "
+            f"highest={top['x']} ({fmt_number(top['y'])}), lowest={low['x']} ({fmt_number(low['y'])})"
         )
         if total:
             line += f", highest point share of total={top['y'] / total:.1%}"
@@ -260,6 +267,7 @@ Rules:
 - Use only numbers from the data or the verified statistics. Never invent, estimate or recompute figures.
 - The change from first to last point is meaningful only when the x axis is time. Ignore it for categories such as regions or products.
 - Format large numbers with K or M (for example 1.31M or 159.9K), add a $ sign only for sales, profit or cost, and show percentages with one decimal.
+- Values between 0 and 1 in a chart about rates or shares are fractions: 0.036 means 3.6%.
 - Describe trends accurately. Do not say a trend is steady or upward unless the data shows it. Name sharp rises, drops and outliers when they exist.
 - Do not claim causes or seasonality from this data alone. Use cautious wording such as "worth investigating" or "may".
 - The Action must name a concrete next step (what to check, compare or change). Avoid generic advice such as "focus on" or "replicate strategies".
