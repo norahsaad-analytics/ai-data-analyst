@@ -1,7 +1,10 @@
 import ast
 import builtins
 import re
+import threading
 import time
+import uuid
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -20,6 +23,7 @@ client = genai.Client(api_key=API_KEY)
 
 FILE_NAME = "Retail_Sales_Data_2022-2024"
 MAX_REQUESTS = 10
+GLOBAL_DAILY_LIMIT = 200
 OUT_OF_SCOPE_MESSAGE = (
     "This request is not related to the sales data, so no chart was generated. "
     "Try a question about Sales, Profit, Orders, Customers, Products, Stores or Returns."
@@ -46,6 +50,59 @@ SAFE_BUILTINS = {
         "enumerate", "map", "filter", "any", "all", "reversed", "isinstance",
     ]
 }
+
+
+@st.cache_resource
+def usage_store():
+    return {
+        "lock": threading.Lock(),
+        "day": datetime.now(timezone.utc).date().isoformat(),
+        "clients": {},
+        "total": 0,
+    }
+
+
+def reset_if_new_day(store):
+    today = datetime.now(timezone.utc).date().isoformat()
+    if store["day"] != today:
+        store["day"] = today
+        store["clients"] = {}
+        store["total"] = 0
+
+
+def get_client_id():
+    try:
+        headers = st.context.headers
+        forwarded = headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        real_ip = headers.get("X-Real-Ip", "")
+        if real_ip:
+            return real_ip.strip()
+    except Exception:
+        pass
+    return f"session-{uuid.uuid4()}"
+
+
+def requests_used_today(client_id):
+    store = usage_store()
+    with store["lock"]:
+        reset_if_new_day(store)
+        return store["clients"].get(client_id, 0)
+
+
+def try_consume_request(client_id):
+    store = usage_store()
+    with store["lock"]:
+        reset_if_new_day(store)
+        used = store["clients"].get(client_id, 0)
+        if used >= MAX_REQUESTS:
+            return False, "You have reached today's request limit. Please come back tomorrow."
+        if store["total"] >= GLOBAL_DAILY_LIMIT:
+            return False, "The app has reached its daily usage limit. Please try again tomorrow."
+        store["clients"][client_id] = used + 1
+        store["total"] += 1
+        return True, ""
 
 
 @st.cache_data(show_spinner="Loading data...", ttl=3600)
@@ -326,13 +383,14 @@ except Exception:
 
 if "schema" not in st.session_state:
     st.session_state["schema"] = build_schema(sheets_data)
-if "requests_used" not in st.session_state:
-    st.session_state["requests_used"] = 0
+if "client_id" not in st.session_state:
+    st.session_state["client_id"] = get_client_id()
 
 with st.sidebar:
     st.header(f"📁 File: {FILE_NAME}")
     st.markdown(f"**Available Tables:** {len(sheets_data)}")
-    st.caption(f"Requests left in this session: {MAX_REQUESTS - st.session_state['requests_used']}")
+    remaining = max(MAX_REQUESTS - requests_used_today(st.session_state["client_id"]), 0)
+    st.caption(f"Requests left today: {remaining}")
     st.write("---")
 
     st.subheader("📚 Tables & Columns Schema:")
@@ -355,10 +413,10 @@ with st.form("analysis_form"):
     submitted = st.form_submit_button("Analyze")
 
 if submitted and user_prompt.strip():
-    if st.session_state["requests_used"] >= MAX_REQUESTS:
-        st.warning("You have reached the request limit for this session.")
+    allowed, limit_message = try_consume_request(st.session_state["client_id"])
+    if not allowed:
+        st.warning(limit_message)
     else:
-        st.session_state["requests_used"] += 1
         with st.spinner("AI Agent is analyzing the data and building the chart..."):
             st.session_state["result"] = run_analysis(
                 user_prompt.strip(), sheets_data, st.session_state["schema"]
