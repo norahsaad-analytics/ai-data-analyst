@@ -116,6 +116,10 @@ Rules:
 - Join tables whenever the request needs information from more than one table.
 - Aggregate the data before plotting and keep charts readable (for example, top 10 categories).
 - Use clear English titles, axis labels and legends.
+- The title must be accurate: if fewer categories exist than the user asked for, do not write 'Top N'.
+- Format numbers readably: use tickformat=".2s" on value axes and thousands separators in hover text.
+- For monthly data show every month on the x axis (for example dtick="M1" or a category axis).
+- Do not include comments in the code.
 - Never read or write files and never access the network.
 - Store the final Plotly figure in a variable named fig.
 - Return only one code block that starts with ```python and ends with ```, with no other text.
@@ -198,6 +202,8 @@ def figure_digest(fig, max_rows_per_trace=40, max_total=200):
             first, second = getattr(trace, "labels", None), getattr(trace, "values", None)
         else:
             first, second = getattr(trace, "x", None), getattr(trace, "y", None)
+            if getattr(trace, "orientation", None) == "h":
+                first, second = second, first
         if first is None or second is None:
             continue
         for a, b in list(zip(first, second))[:max_rows_per_trace]:
@@ -207,21 +213,56 @@ def figure_digest(fig, max_rows_per_trace=40, max_total=200):
     return pd.DataFrame(rows)
 
 
+def digest_stats(digest):
+    lines = []
+    for series, part in digest.groupby("series", dropna=False):
+        valid = part.assign(y=pd.to_numeric(part["y"], errors="coerce")).dropna(subset=["y"])
+        if valid.empty:
+            continue
+        total = valid["y"].sum()
+        top = valid.loc[valid["y"].idxmax()]
+        low = valid.loc[valid["y"].idxmin()]
+        label = series or "all"
+        line = (
+            f"[{label}] points={len(valid)}, total={total:,.2f}, "
+            f"highest={top['x']} ({top['y']:,.2f}), lowest={low['x']} ({low['y']:,.2f})"
+        )
+        if total:
+            line += f", highest point share of total={top['y'] / total:.1%}"
+        first, last = valid.iloc[0], valid.iloc[-1]
+        if first["y"]:
+            line += f", change from first to last point={(last['y'] - first['y']) / abs(first['y']):.1%}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 @st.cache_data(show_spinner=False, ttl=3600)
-def get_summary(request, digest_csv):
+def get_summary(request, digest_csv, stats):
     prompt = f"""
-You are a senior business data analyst.
+You are a senior business analyst writing for a manager who has ten seconds to read.
+
 The user asked: {request}
-Below is the exact data plotted in the chart (CSV: series, x, y):
+
+Exact data plotted in the chart (CSV: series, x, y):
 {digest_csv}
 
-Write the summary in English using exactly this format and nothing else:
-### 💡 Analytical Summary:
-- (Key numerical finding)
-- (Pattern, trend or comparison)
-- (Actionable business recommendation)
+Verified statistics computed from that data:
+{stats}
 
-Use only numbers that appear in the data above. Do not invent or estimate any figure.
+Write exactly this format and nothing else:
+### 💡 Analytical Summary:
+- **Finding:** (the single most important result, with specific numbers)
+- **Insight:** (a different angle: share of total, gap between items, change over time, or an unusual dip or spike)
+- **Action:** (one specific, practical recommendation that follows from the finding)
+
+Rules:
+- Each bullet must be under 30 words and must not repeat the numbers used in another bullet.
+- Use only numbers from the data or the verified statistics. Never invent, estimate or recompute figures.
+- The change from first to last point is meaningful only when the x axis is time. Ignore it for categories such as regions or products.
+- Format large numbers with K or M (for example 1.31M or 159.9K), add a $ sign only for sales, profit or cost, and show percentages with one decimal.
+- Describe trends accurately. Do not say a trend is steady or upward unless the data shows it. Name sharp rises, drops and outliers when they exist.
+- Do not claim causes or seasonality from this data alone. Use cautious wording such as "worth investigating" or "may".
+- The Action must name a concrete next step (what to check, compare or change). Avoid generic advice such as "focus on" or "replicate strategies".
 """
     return call_model(prompt).strip()
 
@@ -249,7 +290,7 @@ def run_analysis(request, sheets, schema):
     digest = figure_digest(fig)
     if not digest.empty:
         try:
-            summary = get_summary(request, digest.to_csv(index=False))
+            summary = get_summary(request, digest.to_csv(index=False), digest_stats(digest))
         except Exception:
             summary = ""
 
