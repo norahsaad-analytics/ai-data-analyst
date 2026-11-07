@@ -23,7 +23,7 @@ client = genai.Client(api_key=API_KEY)
 
 FILE_NAME = "Retail_Sales_Data_2022-2024"
 MAX_REQUESTS = 10
-GLOBAL_DAILY_LIMIT = 200
+GLOBAL_DAILY_LIMIT = 100
 OUT_OF_SCOPE_MESSAGE = (
     "This request is not related to the sales data, so no chart was generated. "
     "Try a question about Sales, Profit, Orders, Customers, Products, Stores or Returns."
