@@ -14,7 +14,8 @@ st.set_page_config(page_title="AI Data Analyst", layout="wide")
 
 API_KEY = st.secrets["GEMINI_API_KEY"]
 SHEET_ID = st.secrets["SHEET_ID"]
-GEMINI_MODELS = ["gemini-3.5-flash-lite"]
+MODELS = list(st.secrets.get("GEMINI_MODELS", ["gemini-3.5-flash-lite", "gemini-2.5-flash"]))
+
 client = genai.Client(api_key=API_KEY)
 
 FILE_NAME = "Retail_Sales_Data_2022-2024"
