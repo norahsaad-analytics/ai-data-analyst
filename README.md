@@ -17,17 +17,6 @@ charts and a short analytical summary. Built with Python and Streamlit.
 ## Tools
 Python, Streamlit, pandas, Plotly, Google Gemini API
 
-## How to run locally
-```bash
-pip install -r requirements.txt
-streamlit run dashboard.py
-```
-Add your Gemini API key as a secret in `.streamlit/secrets.toml`:
-```toml
-GEMINI_API_KEY = "your-key-here"
-```
-Never commit API keys to the repository.
-
 ## Data
-The dataset is loaded from an external spreadsheet and is not stored in this
-repository.
+A public retail sales dataset from Kaggle, loaded into the app from a
+spreadsheet.
